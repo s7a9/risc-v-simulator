@@ -30,3 +30,9 @@
 *.exe
 *.out
 *.app
+
+/sample/
+/references/
+/testcases/
+/bin/
+.vscode/
