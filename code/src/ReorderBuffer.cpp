@@ -3,14 +3,15 @@
 
 
 ReorderBuffer::ReorderBuffer(size_t capacity):
-	capacity(capacity), robs_(new Entry[capacity]),
-	front_(0), back_(capacity - 1), size_(0) {}
-
-ReorderBuffer::~ReorderBuffer() {
-	delete[] robs_;
+	capacity(capacity),	front_(0), back_(capacity - 1), size_(0) {
+	robs_.resize(capacity);
+	for (int i = 0; i < capacity; ++i)
+		robs_[i].Q = i + 1;
 }
 
-void ReorderBuffer::tick(const std::vector<ComnDataBus>& cdbs) {
+ReorderBuffer::~ReorderBuffer() {}
+
+void ReorderBuffer::execute(const std::vector<ComnDataBus>& cdbs) {
 	if (size_ == 0) return;
 	int i = front_;
 	do {
@@ -23,8 +24,13 @@ void ReorderBuffer::tick(const std::vector<ComnDataBus>& cdbs) {
 					break;
 				}
 		}
-		robs_[i].tick();
 	} while (i != back_);
+}
+
+void ReorderBuffer::tick() {
+	if (size_ == 0) return;
+	int i = front_;
+	do { robs_[i].tick(); } while (i != back_);
 }
 
 int ReorderBuffer::push() {
@@ -40,7 +46,8 @@ void ReorderBuffer::pop() {
 
 void ReorderBuffer::clear() {
 	front_ = back_ = size_ = 0;
-	memset(robs_, 0, sizeof(Entry) * capacity);
+	robs_.clear();
+	robs_.resize(capacity);
 }
 
 void ReorderBuffer::withdraw() { 

@@ -17,10 +17,12 @@ public:
 
 		Register<uint32> addr, cmd;
 
+		int8 Q;
+
 		void tick();
 	};
 private:
-	Entry* robs_;
+	std::vector<Entry> robs_;
 
 	int front_, back_, size_;
 
@@ -37,7 +39,9 @@ public:
 
 	bool full() const { return size_ == capacity; }
 
-	void tick(const std::vector<ComnDataBus>& cdbs);
+	void execute(const std::vector<ComnDataBus>& cdbs);
+
+	void tick();
 
 	int push();
 
@@ -46,6 +50,8 @@ public:
 	void clear();
 
 	void withdraw();
+
+	int8 front_Q() const { return front_ + 1; }
 
 	Entry& front() { return robs_[front_]; }
 

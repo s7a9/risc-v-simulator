@@ -2,6 +2,7 @@
 
 #include "RvComnDataBus.h"
 #include "RvRegister.hpp"
+#include <vector>
 
 enum RS_State {
 	RS_Empty, RS_Waiting, RS_Ready, RS_Committed
@@ -14,7 +15,7 @@ struct ResrvStation {
 
 	Register<uint32> cmd;
 
-	void execute(ComnDataBus* cdb, size_t cdbn);
+	void execute(const std::vector<ComnDataBus>& cdbs);
 
 	void tick();
 };

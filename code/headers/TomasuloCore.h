@@ -5,21 +5,26 @@
 #include <queue>
 #include <vector>
 #include "RvMemory.h"
+#include "Predictor.h"
 #include "RvALU.h"
 #include "ReorderBuffer.h"
 
 struct MemUnit {
-	std::queue<uint32> load_que_addr;
+	static const size_t MEM_LOAD_TIME = 3;
 
-	std::queue<uint32> load_que_cmd;
+	struct load_instr {
+		int8 Q;
 
-	std::queue<int8> load_que_Q;
+		uint32 addr, cmd;
 
-	std::queue<size_t> load_que_time;
+		size_t time;
+	};
+
+	std::queue<load_instr> load_queue;
 
 	RvMemory* pmem = nullptr;
 
-	void tick(ComnDataBus* cdb);
+	void execute(ComnDataBus* cdb, size_t time);
 };
 
 class TomasuloCPUCore {
@@ -38,7 +43,11 @@ private:
 
 	ReorderBuffer rob_;
 
+	size_t cpu_time_;
+
 	const size_t cdbn_, alun_, robn_;
+
+	Predictor* predictor_;
 
 	ComnDataBus* get_idle_cdb_();
 
@@ -54,8 +63,11 @@ private:
 
 	bool try_get_alu_(int& i);
 
+	bool load_rs_data_(ResrvStation& rs, int8 rs1, int8 rs2);
+
 public:
-	TomasuloCPUCore(RvMemory* mem, size_t cdbn, size_t alun, size_t robn);
+	TomasuloCPUCore(RvMemory* mem, Predictor* predictor,
+		size_t cdbn, size_t alun, size_t robn);
 
 	~TomasuloCPUCore();
 

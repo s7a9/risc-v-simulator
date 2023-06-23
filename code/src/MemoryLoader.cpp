@@ -1,6 +1,9 @@
-#include "RvMemory.h"
+#include "MemoryLoader.h"
+
 #include <fstream>
 #include <string>
+#include <cctype>
+
 
 void load_memory(RvMemory* mem, const char* filename) {
     std::fstream file(filename, std::ios::in);
@@ -10,10 +13,7 @@ void load_memory(RvMemory* mem, const char* filename) {
     char* p;
     while (file >> content) {
         if (content[0] == '@') {
-            pos = 0;
-            for (int i = 1; i < content.size(); ++i) {
-                pos = pos * 10 + content[i] - '0';
-            }
+            pos = strtol(content.c_str() + 1, &p, 16);
         }
         else {
             x = strtol(content.c_str(), &p, 16);

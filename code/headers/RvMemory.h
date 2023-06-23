@@ -19,9 +19,9 @@ public:
 
     ~RvMemory();
 
-    void readBytes(uint32 pos, char* buf, size_t size);
+    void readBytes(uint32 pos, void* buf, size_t size);
 
-    void writeBytes(uint32 pos, const char* buf, size_t size);
+    void writeBytes(uint32 pos, const void* buf, size_t size);
 
     template <class T> 
     void read(uint32 pos, T& elem) {

@@ -31,8 +31,7 @@ int32 parse_imm(uint32 cmd, char type) {
 			((cmd & 0x7E000000) >> 20) +
 			((cmd & 0x00000F00) >> 7) +
 			((cmd & 0x00000080) << 4), 12);
-	case 'U': return extend_sign(
-			cmd & 0xFFFFF000, 20);
+	case 'U': return cmd & 0xFFFFF000;
 	case 'J': return extend_sign(
 			((cmd & 0x80000000) >> 11) +
 			((cmd & 0x7FE00000) >> 20) +
@@ -51,14 +50,28 @@ ComnDataBus* TomasuloCPUCore::get_idle_cdb_() {
 TomasuloCPUCore::~TomasuloCPUCore() {}
 
 void TomasuloCPUCore::tick() {
+	issue_();
+	execute_();
+	write_result_();
+	commit_();
+	for (auto& iter : alus_) iter.rs.tick();
+	for (int i = 0; i < 32; ++i) {
+		reg[i].tick();
+		reg_file[i].tick();
+	}
+	PC.tick();
+	rob_.tick();
+	++cpu_time_;
 }
 
-TomasuloCPUCore::TomasuloCPUCore(RvMemory* pmem,
+TomasuloCPUCore::TomasuloCPUCore(RvMemory* pmem, Predictor* predictor,
 	size_t cdbn, size_t alun, size_t robn):
 	rob_(robn), cdbn_(cdbn), alun_(alun), robn_(robn) {
 	mu_.pmem = pmem;
-	cdbs_.reserve(cdbn);
-	alus_.reserve(alun);
+	predictor_ = predictor;
+	cpu_time_ = 0;
+	cdbs_.resize(cdbn);
+	alus_.resize(alun);
 }
 
 void TomasuloCPUCore::issue_() {
@@ -66,6 +79,7 @@ void TomasuloCPUCore::issue_() {
 	if (rob_.full()) return;
 	int rob_q = rob_.push();
 	ReorderBuffer::Entry& rob = rob_.back();
+	ResrvStation* rs = nullptr;
 	int i = 0;
 	int32 tmp_val = 0;
 	uint32 cmd;
@@ -109,30 +123,41 @@ void TomasuloCPUCore::issue_() {
 		}
 		break;
 	case Instr_Branch:
-		break;
-	case Instr_L:
-		if (try_get_alu_(i)) {
-			rob.busy = true;
-			reg_file[rd] = rob_q;
-			ResrvStation& rs = alus_[i].rs;
-			rs.cmd = cmd;
-			rs.Dst = rob_q;
-		  	rs.Q1 = rs.Q2 = rs.Op = 0;
-			rs.V2 = parse_imm(cmd, 'I');
-			if (try_get_data_(parse_rs1(cmd), tmp_val)) {
-				rs.state = RS_Ready;
-				rs.V1 = tmp_val;
-			}
-			else {
-				rs.state = RS_Waiting;
-				rs.Q1 = reg_file[parse_rs1(cmd)];
-				rs.V1 = 0;
-			}
-		}
-		else { // Stall
+		if (!try_get_alu_(i)) {
 			PC = PC;
 			rob_.withdraw();
+			break;
 		}
+		rob.busy = true;
+		rs = &alus_[i].rs;
+		rs->cmd = cmd; rs->Dst = rob_q;
+		rs->Op = parse_func3(cmd);
+		rs->state = load_rs_data_(*rs, parse_rs1(cmd), parse_rs2(cmd)) ?
+			RS_Ready : RS_Waiting;
+		if (predictor_->predict(PC)) {
+			PC = PC + parse_imm(cmd, 'B');
+			rob.dest_reg = 1;
+		}
+		else {
+			rob.dest_reg = 0;
+		}
+		break;
+	case Instr_L:
+		if (!try_get_alu_(i)) {
+			PC = PC;
+			rob_.withdraw();
+			break;
+		}
+		rob.busy = true;
+		reg_file[rd] = rob_q;
+		rob.addr = 0xFFFFFFFF;
+		rs = &alus_[i].rs;
+		rs->cmd = cmd;
+		rs->Dst = rob_q;
+		rs->Op = 0;
+		rs->state = load_rs_data_(*rs, parse_rs1(cmd), 0) ?
+			RS_Ready : RS_Waiting;
+		rs->V2 = parse_imm(cmd, 'I');
 		break;
 	case Instr_S:
 		if (!try_get_alu_(i)) {
@@ -143,19 +168,12 @@ void TomasuloCPUCore::issue_() {
 		}
 		rob.dest_reg = 0;
 		rob.busy = true;
-		ResrvStation& rs = alus_[i].rs;
-		rs.cmd = cmd; rs.Dst = rob_q;
-		rs.Q1 = rs.Q2 = rs.Op = 0;
-		rs.V2 = parse_imm(cmd, 'S');
-		if (try_get_data_(parse_rs1(cmd), tmp_val)) {
-			rs.state = RS_Ready;
-			rs.V1 = tmp_val;
-		}
-		else {
-			rs.state = RS_Waiting;
-			rs.Q1 = reg_file[parse_rs1(cmd)];
-			rs.V1 = 0;
-		}
+		rs = &alus_[i].rs;
+		rs->cmd = cmd; rs->Dst = rob_q;
+		rs->Op = 0;
+		rs->state = load_rs_data_(*rs, parse_rs1(cmd), 0) ?
+			RS_Ready : RS_Waiting;
+		rs->V2 = parse_imm(cmd, 'S');
 		break;
 	case Instr_ALUI:
 		if (!try_get_alu_(i)) {
@@ -165,19 +183,12 @@ void TomasuloCPUCore::issue_() {
 		}
 		rob.busy = true;
 		reg_file[rd] = rob_q;
-		ResrvStation& rs = alus_[i].rs;
-		rs.cmd = cmd; rs.Dst = rob_q;
-		rs.Q1 = rs.Q2 = 0; rs.Op = parse_func3(cmd);
-		rs.V2 = parse_imm(cmd, 'I');
-		if (try_get_data_(parse_rs1(cmd), tmp_val)) {
-			rs.state = RS_Ready;
-			rs.V1 = tmp_val;
-		}
-		else {
-			rs.state = RS_Waiting;
-			rs.Q1 = reg_file[parse_rs1(cmd)];
-			rs.V1 = 0;
-		}
+		rs = &alus_[i].rs;
+		rs->cmd = cmd; rs->Dst = rob_q;
+		rs->Op = parse_func3(cmd);
+		rs->state = load_rs_data_(*rs, parse_rs1(cmd), 0) ?
+			RS_Ready : RS_Waiting;
+		rs->V2 = parse_imm(cmd, 'I');
 		break;
 	case Instr_ALU:
 		if (!try_get_alu_(i)) {
@@ -187,18 +198,75 @@ void TomasuloCPUCore::issue_() {
 		}
 		rob.busy = true;
 		reg_file[rd] = rob_q;
-		ResrvStation& rs = alus_[i].rs;
-		rs.cmd = cmd; rs.Dst = rob_q;
-		rs.Op = parse_func3(cmd);
-		if (try_get_data_(parse_rs1(cmd), tmp_val)) {
-			rs.state = RS_Ready;
-			rs.V1 = tmp_val;
+		rs = &alus_[i].rs;
+		rs->cmd = cmd; rs->Dst = rob_q;
+		rs->Op = parse_func3(cmd);
+		rs->state = load_rs_data_(*rs, parse_rs1(cmd), parse_rs2(cmd)) ?
+			RS_Ready : RS_Waiting;
+		break;
+	}
+}
+
+void TomasuloCPUCore::execute_() {
+	for (auto& iter : cdbs_) iter.busy = false; 
+	mu_.execute(get_idle_cdb_(), cpu_time_);
+	for (auto& iter : alus_) {
+		ComnDataBus* cdb = get_idle_cdb_();
+		if (!cdb) break;
+		iter.execute(cdb);
+	}
+}
+
+void TomasuloCPUCore::write_result_() {
+	for (auto& iter : alus_) {
+		iter.rs.execute(cdbs_);
+	}
+	rob_.execute(cdbs_);
+}
+
+void TomasuloCPUCore::commit_() {
+	if (rob_.empty()) return;
+	ReorderBuffer::Entry& rob = rob_.front();
+	int32 val = 0;
+	if (rob.busy) return;
+	switch (rob.cmd & 127) {
+	case Instr_Branch:
+		predictor_->revise(rob.addr, rob.dest_reg, rob.val);
+		if (rob.dest_reg != rob.val) {
+			if (rob.val)
+				PC = rob.addr + parse_imm(rob.cmd, 'B');
+			else PC = rob.addr + 4;
+			rob_.clear();
+			memset(reg_file, 0, sizeof(reg_file));
+		}
+		rob_.pop();
+		break;
+	case Instr_L:
+		if (rob.addr == 0xFFFFFFFF) {
+			rob.addr = 0;
+			rob.busy = true;
+			mu_.load_queue.push(MemUnit::load_instr{
+				rob_.front_Q(),
+				static_cast<uint32>(rob.val),
+				rob.cmd,
+				cpu_time_ });
 		}
 		else {
-			rs.state = RS_Waiting;
-			rs.Q1 = reg_file[parse_rs1(cmd)];
-			rs.V1 = 0;
+			reg[rob.dest_reg] = rob.val;
+			rob_.pop();
 		}
+		break;
+	case Instr_S:
+		val = reg[parse_rs2(rob.cmd)];
+		switch (parse_func3(rob.cmd)) {
+		case 0: mu_.pmem->writeBytes(rob.val, &val, 1); break;
+		case 1: mu_.pmem->writeBytes(rob.val, &val, 2); break;
+		case 2: mu_.pmem->writeBytes(rob.val, &val, 4); break;
+		}
+		break;
+	default:
+		reg[rob.dest_reg] = rob.val;
+		rob_.pop();
 		break;
 	}
 }
@@ -226,3 +294,65 @@ bool TomasuloCPUCore::try_get_alu_(int& i) {
 	return false;
 }
 
+bool TomasuloCPUCore::load_rs_data_(ResrvStation& rs, int8 rs1, int8 rs2) {
+	int32 tmp_val;
+	bool f1 = true, f2 = true;
+	if (rs1) {
+		if (try_get_data_(rs1, tmp_val)) {
+			rs.V1 = tmp_val;
+			rs.Q1 = 0;
+		}
+		else {
+			rs.Q1 = reg_file[rs1];
+			rs.V1 = 0;
+			f1 = false;
+		}
+	}
+	else {
+		rs.Q1 = 0;
+		rs.V1 = 0;
+	}
+	if (rs2) {
+		if (try_get_data_(rs2, tmp_val)) {
+			rs.V2 = tmp_val;
+			rs.Q2 = 0;
+		}
+		else {
+			rs.Q2 = reg_file[rs2];
+			rs.V2 = 0;
+			f2 = false;
+		}
+	}
+	else {
+		rs.Q2 = 0;
+		rs.V2 = 0;
+	}
+	return f1 && f2;
+}
+
+void MemUnit::execute(ComnDataBus* cdb, size_t time) {
+	if (load_queue.empty() || !cdb) return;
+	if (time < load_queue.front().time + MEM_LOAD_TIME) return;
+	uint32 val;
+	load_instr& instr = load_queue.front();
+	cdb->busy = true;
+	cdb->Q = instr.Q;
+	switch (parse_func3(instr.cmd)) {
+	case 0:
+		pmem->readBytes(instr.addr, &val, 1);
+		cdb->val = extend_sign(val, 8);
+		break;
+	case 1:
+		pmem->readBytes(instr.addr, &val, 2);
+		cdb->val = extend_sign(val, 16);
+		break;
+	case 2: case 4:
+		pmem->readBytes(instr.addr, &val, 4);
+		cdb->val = val;
+		break;
+	case 5:
+		pmem->readBytes(instr.addr, &val, 2);
+		cdb->val = val;
+		break;
+	}
+}
