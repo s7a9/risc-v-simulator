@@ -4,11 +4,18 @@
 
 template <class T>
 class Register {
-private:
+public:
 	T cur_data, nxt_data;
 
-public:
 	Register(): cur_data(T()), nxt_data(T()) {}
+
+	Register(const T& init_val):
+		cur_data(init_val), nxt_data(init_val) {}
+
+	T operator= (const Register& rhs) {
+		nxt_data = rhs.cur_data;
+		return nxt_data;
+	}
 
 	T operator= (T rhs) {
 		nxt_data = rhs;

@@ -45,6 +45,7 @@ ComnDataBus* TomasuloCPUCore::get_idle_cdb_() {
 	for (int i = 0; i < cdbn_; ++i) {
 		if (!cdbs_[i].busy) return &cdbs_[i];
 	}
+	return nullptr;
 }
 
 TomasuloCPUCore::~TomasuloCPUCore() {}
@@ -55,6 +56,7 @@ void TomasuloCPUCore::tick() {
 	write_result_();
 	commit_();
 	for (auto& iter : alus_) iter.rs.tick();
+	reg[0] = 0; reg_file[0] = 0;
 	for (int i = 0; i < 32; ++i) {
 		reg[i].tick();
 		reg_file[i].tick();
@@ -77,8 +79,8 @@ TomasuloCPUCore::TomasuloCPUCore(RvMemory* pmem, Predictor* predictor,
 void TomasuloCPUCore::issue_() {
 	// Reoerder Buffer is Full, cannot issue instruction
 	if (rob_.full()) return;
-	int rob_q = rob_.push();
-	ReorderBuffer::Entry& rob = rob_.back();
+	ReorderBuffer::Entry& rob = rob_.push();
+	int8 rob_q = rob.Q;
 	ResrvStation* rs = nullptr;
 	int i = 0;
 	int32 tmp_val = 0;
@@ -87,6 +89,7 @@ void TomasuloCPUCore::issue_() {
 	int8 opcode = cmd & 127;
 	int8 rd = parse_rd(cmd);
 	PC = PC + 4;
+	rob.busy = true;
 	rob.cmd = cmd;
 	rob.dest_reg = rd;
 	rob.addr = PC;
@@ -112,7 +115,7 @@ void TomasuloCPUCore::issue_() {
 			rob.busy = false;
 			reg_file[rd] = rob_q;
 			rob.val = PC + 4;
-			PC = (tmp_val + parse_imm(cmd, 'I') << 1) & 0xFFFFFFFE;
+			PC = (tmp_val + (parse_imm(cmd, 'I') << 1)) & 0xFFFFFFFE;
 		}
 		else { 
 			// Failed to get data from registers or ROB
@@ -143,17 +146,17 @@ void TomasuloCPUCore::issue_() {
 		}
 		break;
 	case Instr_L:
-		if (!try_get_alu_(i)) {
+		if (!try_get_alu_(i) || !rd) {
 			PC = PC;
 			rob_.withdraw();
 			break;
 		}
 		rob.busy = true;
+		rob.val = 0;
 		reg_file[rd] = rob_q;
-		rob.addr = 0xFFFFFFFF;
 		rs = &alus_[i].rs;
 		rs->cmd = cmd;
-		rs->Dst = rob_q;
+		rs->Dst = rob_q | 32;
 		rs->Op = 0;
 		rs->state = load_rs_data_(*rs, parse_rs1(cmd), 0) ?
 			RS_Ready : RS_Waiting;
@@ -219,7 +222,21 @@ void TomasuloCPUCore::execute_() {
 
 void TomasuloCPUCore::write_result_() {
 	for (auto& iter : alus_) {
-		iter.rs.execute(cdbs_);
+		ResrvStation& rs = iter.rs;
+		rs.execute(cdbs_);
+		// Allow reservestation to read data from ROB
+		if (rs.state == RS_Waiting) {
+			if (rs.Q1 && !rob_[rs.Q1].busy) {
+				rs.V1 = rob_[rs.Q1].val;
+				rs.Q1 = 0;
+			}
+			if (rs.Q2 && !rob_[rs.Q2].busy) {
+				rs.V2 = rob_[rs.Q2].val;
+				rs.Q2 = 0;
+			}
+			if (!rs.Q1.nxt_data && !rs.Q2.nxt_data)
+				rs.state = RS_Ready;
+		}
 	}
 	rob_.execute(cdbs_);
 }
@@ -228,6 +245,18 @@ void TomasuloCPUCore::commit_() {
 	if (rob_.empty()) return;
 	ReorderBuffer::Entry& rob = rob_.front();
 	int32 val = 0;
+	auto iter = rob_.begin();
+	do {
+		uint32 opcode = iter->cmd & 127;
+		if (opcode == Instr_S) break;
+		if (opcode == Instr_L && iter->val == 1) {
+			iter->val = 0;
+			mu_.load_queue.push(MemUnit::load_instr{
+				iter->Q, iter->addr, iter->cmd, cpu_time_
+			});
+			break;
+		}
+	} while (iter++ != rob_.end());
 	if (rob.busy) return;
 	switch (rob.cmd & 127) {
 	case Instr_Branch:
@@ -239,22 +268,7 @@ void TomasuloCPUCore::commit_() {
 			rob_.clear();
 			memset(reg_file, 0, sizeof(reg_file));
 		}
-		rob_.pop();
-		break;
-	case Instr_L:
-		if (rob.addr == 0xFFFFFFFF) {
-			rob.addr = 0;
-			rob.busy = true;
-			mu_.load_queue.push(MemUnit::load_instr{
-				rob_.front_Q(),
-				static_cast<uint32>(rob.val),
-				rob.cmd,
-				cpu_time_ });
-		}
-		else {
-			reg[rob.dest_reg] = rob.val;
-			rob_.pop();
-		}
+		else rob_.pop();
 		break;
 	case Instr_S:
 		val = reg[parse_rs2(rob.cmd)];
@@ -263,9 +277,12 @@ void TomasuloCPUCore::commit_() {
 		case 1: mu_.pmem->writeBytes(rob.val, &val, 2); break;
 		case 2: mu_.pmem->writeBytes(rob.val, &val, 4); break;
 		}
+		rob_.pop();
 		break;
 	default:
 		reg[rob.dest_reg] = rob.val;
+		if (rob.Q == reg_file[rob.dest_reg])
+			reg_file[rob.dest_reg] = 0;
 		rob_.pop();
 		break;
 	}
@@ -355,4 +372,5 @@ void MemUnit::execute(ComnDataBus* cdb, size_t time) {
 		cdb->val = val;
 		break;
 	}
+	load_queue.pop();
 }

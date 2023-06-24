@@ -24,11 +24,37 @@ public:
 private:
 	std::vector<Entry> robs_;
 
-	int front_, back_, size_;
+	Register<int> front_, back_, size_;
 
 	int next(int i) { return (i + 1ll) % capacity; }
 
 public:
+	struct iterator {
+	private:
+		ReorderBuffer* rob_;
+
+		int index_;
+
+	public:
+		iterator(ReorderBuffer* rob, int index);
+
+		iterator(const iterator& other);
+
+		iterator& operator++();
+
+		iterator operator++(int);
+
+		Entry* operator->();
+
+		bool operator!= (const iterator& other);
+	};
+
+	iterator begin();
+
+	iterator end();
+
+	friend iterator;
+
 	const size_t capacity;
 
 	ReorderBuffer(size_t capacity);
@@ -43,15 +69,13 @@ public:
 
 	void tick();
 
-	int push();
+	Entry& push();
 
 	void pop();
 
 	void clear();
 
 	void withdraw();
-
-	int8 front_Q() const { return front_ + 1; }
 
 	Entry& front() { return robs_[front_]; }
 

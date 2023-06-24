@@ -1,6 +1,15 @@
 #include <cstring>
 #include "ReorderBuffer.h"
 
+using iterator = ReorderBuffer::iterator;
+
+iterator ReorderBuffer::begin() {
+	return iterator(this, front_);
+}
+
+iterator ReorderBuffer::end() {
+	return iterator(this, back_);
+}
 
 ReorderBuffer::ReorderBuffer(size_t capacity):
 	capacity(capacity),	front_(0), back_(capacity - 1), size_(0) {
@@ -13,34 +22,45 @@ ReorderBuffer::~ReorderBuffer() {}
 
 void ReorderBuffer::execute(const std::vector<ComnDataBus>& cdbs) {
 	if (size_ == 0) return;
-	int i = front_;
+	auto iter = begin();
 	do {
-		// If this entry is waiting for data on CDB.
-		if (robs_[i].busy) {
-			for (auto iter = cdbs.begin(); iter != cdbs.end(); ++iter)
-				if (iter->busy && i + 1 == iter->Q) {
-					robs_[i].val = iter->val;
-					robs_[i].busy = false;
+		if (iter->busy) {
+			for (auto cdb = cdbs.begin(); cdb != cdbs.end(); ++cdb) {
+				if (cdb->busy && iter->Q == (cdb->Q & 31)) {
+					if (cdb->Q & 32) {
+						iter->addr = cdb->val;
+						iter->val = 1;
+					}
+					else {
+						iter->val = cdb->val;
+						iter->busy = false;
+					}
 					break;
 				}
+			}
 		}
-	} while (i != back_);
+	} while (iter++ != end());
 }
 
 void ReorderBuffer::tick() {
+	front_.tick();
+	back_.tick();
+	size_.tick();
 	if (size_ == 0) return;
-	int i = front_;
-	do { robs_[i].tick(); } while (i != back_);
+	auto iter = begin();
+	do {
+		iter->tick();
+	} while (iter++ != end());
 }
 
-int ReorderBuffer::push() {
-	++size_;
+ReorderBuffer::Entry& ReorderBuffer::push() {
+	size_ = size_.nxt_data + 1;
 	back_ = next(back_);
-	return back_ + 1;
+	return robs_[back_.nxt_data];
 }
 
 void ReorderBuffer::pop() {
-	--size_;
+	size_ = size_.nxt_data - 1;
 	front_ = next(front_);
 }
 
@@ -51,8 +71,8 @@ void ReorderBuffer::clear() {
 }
 
 void ReorderBuffer::withdraw() { 
-	--size_;
-	back_ = (back_ + capacity - 1) % capacity;
+	size_ = size_;
+	back_ = back_;
 }
 
 void ReorderBuffer::Entry::tick() {
@@ -62,3 +82,29 @@ void ReorderBuffer::Entry::tick() {
 	addr.tick();
 	cmd.tick();
 }
+
+iterator::iterator(ReorderBuffer* rob, int index) :
+	rob_(rob), index_(index) {}
+
+iterator::iterator(const iterator& other) :
+	rob_{ other.rob_ }, index_(other.index_) {}
+
+iterator& iterator::operator++() {
+	index_ = rob_->next(index_);
+	return *this;
+}
+
+iterator iterator::operator++(int) {
+	iterator iter = *this;
+	++(*this);
+	return iter;
+}
+
+ReorderBuffer::Entry* iterator::operator->() {
+	return rob_->robs_.data() + index_;
+}
+
+bool ReorderBuffer::iterator::operator!=(const iterator& other) {
+	return index_ != other.index_;
+}
+
