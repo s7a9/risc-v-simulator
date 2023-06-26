@@ -7,15 +7,15 @@ RvMemory::RvMemory(size_t block_size):
     block_len_(1u << block_size_) {}
 
 RvMemory::~RvMemory() {
-    for (auto iter = data_.begin(); iter != data_.end(); ++iter) 
-        free(iter->second);
+    for (auto iter = data_.begin(); iter != data_.end(); ++iter)
+        delete[] iter->second;
 }
 
 char* RvMemory::get_mem_(uint32 idx) {
     char* mem = nullptr;
     auto result = data_.find(idx);
     if (result == data_.end()) {
-        data_.insert(std::make_pair(idx, mem = (char*)malloc(block_len_)));
+        data_.insert(std::make_pair(idx, mem = new char[block_len_]));
         memset(mem, 0, block_len_);
         return mem;
     }
@@ -28,8 +28,7 @@ void RvMemory::readBytes(uint32 pos, void* buf, size_t size) {
     size_t i = 0;
     char* mem_buf = nullptr;
     while (i < size) {
-        if (mem_buf == nullptr)
-            mem_buf = get_mem_(block_idx);
+        mem_buf = get_mem_(block_idx);
         if (idx + size <= block_len_ + i) {
             memcpy(reinterpret_cast<char*>(buf) + i, 
                 mem_buf + idx, size - i);
@@ -41,7 +40,6 @@ void RvMemory::readBytes(uint32 pos, void* buf, size_t size) {
         i += tlen;
         idx = 0;
         ++block_idx;
-        mem_buf = nullptr;
     }
 }
 
@@ -51,8 +49,7 @@ void RvMemory::writeBytes(uint32 pos, const void* buf, size_t size) {
     size_t i = 0;
     char* mem_buf = nullptr;
     while (i < size) {
-        if (mem_buf == nullptr)
-            mem_buf = get_mem_(block_idx);
+        mem_buf = get_mem_(block_idx);
         if (idx + size <= block_len_ + i) {
             memcpy(mem_buf + idx, 
                 reinterpret_cast<const char*>(buf) + i, size - i);
@@ -64,6 +61,5 @@ void RvMemory::writeBytes(uint32 pos, const void* buf, size_t size) {
         i += tlen;
         idx = 0;
         ++block_idx;
-        mem_buf = nullptr;
     }
 }

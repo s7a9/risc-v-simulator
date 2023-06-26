@@ -5,7 +5,7 @@
 #include <vector>
 
 enum RS_State {
-	RS_Empty, RS_Waiting, RS_Ready, RS_Committed
+	RS_Idle, RS_Waiting, RS_Ready
 };
 
 struct ResrvStation {
@@ -21,7 +21,5 @@ struct ResrvStation {
 };
 
 struct ALU {
-	ResrvStation rs;
-
-	void execute(ComnDataBus* cdb);
+	static void execute(ComnDataBus* cdb, ResrvStation& rs);
 };

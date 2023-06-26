@@ -1,12 +1,21 @@
 #include "MemoryLoader.h"
 
+#include <iostream>
 #include <fstream>
 #include <string>
 #include <cctype>
 
 
-void load_memory(RvMemory* mem, const char* filename) {
+void load_memory_from_file(RvMemory* mem, const char* filename) {
     std::fstream file(filename, std::ios::in);
+    if (!file.is_open()) {
+        std::cout << "Can not open file \"" << filename << "\"." << std::endl;
+        exit(-1);
+    }
+    load_memory(mem, file);
+}
+
+void load_memory(RvMemory* mem, std::istream& file) {
     std::string content;
     uint32 pos = 0;
     int8 x = 0;

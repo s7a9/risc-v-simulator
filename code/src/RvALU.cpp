@@ -27,12 +27,14 @@ void ResrvStation::tick() {
 	cmd.tick();
 }
 
-void ALU::execute(ComnDataBus* cdb) {
+#include <cstdio>
+
+void ALU::execute(ComnDataBus* cdb, ResrvStation& rs) {
 	if (rs.state == RS_Ready) {
 		uint32 uv1 = rs.V1, uv2 = rs.V2;
 		cdb->busy = true;
 		cdb->Q = rs.Dst;
-		rs.state = RS_Committed;
+		rs.state = RS_Idle;
 		if ((rs.cmd & 127) == Instr_Branch) {
 			switch (rs.Op) {
 			case 0: cdb->val = rs.V1 == rs.V2; break;
@@ -44,6 +46,14 @@ void ALU::execute(ComnDataBus* cdb) {
 			}
 			return;
 		}
+		// DEBUG!! //
+		if (rs.cmd == 0x00f54533) {
+			printf("%u", rs.V1.cur_data);
+		}
+		if (rs.cmd == 0x00d7c7b3) {
+			printf("%c", rs.V1.cur_data & 255);
+		}
+		// ------- //
 		switch (rs.Op) {
 		case 0:
 			if ((rs.cmd & 127) == Instr_ALUI) {
@@ -59,14 +69,10 @@ void ALU::execute(ComnDataBus* cdb) {
 		case 3: cdb->val = (uv1 < uv2) ? 1 : 0; break;
 		case 4: cdb->val = uv1 ^ uv2; break;
 		case 5:
-			if ((rs.cmd & 0x40000000) && (uv1 & 0x80000000)) {
-				uv2 &= 31;
-				cdb->val = uv1 >> uv2;
-				while (uv2--) {
-					cdb->val |= 1u << (31 - uv2);
-				}
-			}
-			else cdb->val = uv1 >> uv2;
+			uv2 &= 31; 
+			cdb->val = uv1 >> uv2;
+			if ((rs.cmd & 0x40000000) && (uv1 & 0x80000000))
+				cdb->val |= 0xFFFFFFFF << (32 - uv2);
 			break;
 		case 6: cdb->val = uv1 | uv2; break;
 		case 7: cdb->val = uv1 & uv2; break;

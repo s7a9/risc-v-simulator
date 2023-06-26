@@ -24,19 +24,19 @@ void ReorderBuffer::execute(const std::vector<ComnDataBus>& cdbs) {
 	if (size_ == 0) return;
 	auto iter = begin();
 	do {
-		if (iter->busy) {
-			for (auto cdb = cdbs.begin(); cdb != cdbs.end(); ++cdb) {
-				if (cdb->busy && iter->Q == (cdb->Q & 31)) {
-					if (cdb->Q & 32) {
-						iter->addr = cdb->val;
+		if (iter->busy) for (auto& cdb : cdbs) {
+			if (cdb.busy && iter->Q == (cdb.Q & 31)) {
+				if (cdb.Q & 32) {
+					if ((iter->cmd & 127) == Instr_L) {
+						iter->addr = cdb.val;
 						iter->val = 1;
 					}
-					else {
-						iter->val = cdb->val;
-						iter->busy = false;
-					}
-					break;
 				}
+				else {
+					iter->val = cdb.val;
+					iter->busy = false;
+				}
+				break;
 			}
 		}
 	} while (iter++ != end());
@@ -55,24 +55,27 @@ void ReorderBuffer::tick() {
 
 ReorderBuffer::Entry& ReorderBuffer::push() {
 	size_ = size_.nxt_data + 1;
-	back_ = next(back_);
+	back_ = next(back_.nxt_data);
 	return robs_[back_.nxt_data];
 }
 
 void ReorderBuffer::pop() {
 	size_ = size_.nxt_data - 1;
-	front_ = next(front_);
+	front_ = next(front_.nxt_data);
 }
 
 void ReorderBuffer::clear() {
-	front_ = back_ = size_ = 0;
+	front_ = size_ = 0;
+	back_ = capacity - 1;
 	robs_.clear();
 	robs_.resize(capacity);
+	for (int i = 0; i < capacity; ++i)
+		robs_[i].Q = i + 1;
 }
 
 void ReorderBuffer::withdraw() { 
-	size_ = size_;
-	back_ = back_;
+	size_ = size_.nxt_data - 1;
+	back_ = (back_.nxt_data + capacity - 1) % capacity;
 }
 
 void ReorderBuffer::Entry::tick() {

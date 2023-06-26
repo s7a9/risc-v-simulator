@@ -31,7 +31,7 @@ class TomasuloCPUCore {
 private:
 	std::vector<ComnDataBus> cdbs_;
 
-	std::vector<ALU> alus_;
+	std::vector<ResrvStation> alus_;
 
 	Register<uint32> PC;
 
@@ -61,11 +61,13 @@ private:
 
 	bool try_get_data_(int8 r, int32& val);
 
-	bool try_get_alu_(int& i);
+	ResrvStation* try_get_alu_();
 
 	bool load_rs_data_(ResrvStation& rs, int8 rs1, int8 rs2);
 
 public:
+	bool end_simulate = false;
+
 	TomasuloCPUCore(RvMemory* mem, Predictor* predictor,
 		size_t cdbn, size_t alun, size_t robn);
 
