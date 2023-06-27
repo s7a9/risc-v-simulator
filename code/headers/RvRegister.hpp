@@ -26,7 +26,7 @@ public:
 		cur_data = nxt_data;
 	}
 
-	operator typename T() const {
+	operator T() const {
 		return cur_data;
 	}
 };

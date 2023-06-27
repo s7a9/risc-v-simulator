@@ -36,3 +36,8 @@
 /testcases/
 /bin/
 .vscode/
+/CMakeFiles/
+
+Makefile
+cmake_install.cmake
+CMakeCache.txt

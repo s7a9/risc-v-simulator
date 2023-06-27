@@ -15,8 +15,7 @@ inline int32 extend_sign(uint32 x, int8 bitc) {
 }
 
 int32 parse_imm(uint32 cmd, char type) {
-	switch (type)
-	{
+	switch (type) {
 	case 'I': return extend_sign(
 			cmd >> 20, 12);
 	case 'S': return extend_sign(
@@ -88,7 +87,7 @@ void TomasuloCPUCore::issue_() {
 	uint32 cmd;
 	mu_.pmem->read(PC, cmd);
 	if (cmd == 0x0ff00513) {
-		printf("\nJudgeResult: %d\n", reg[10] & 255);
+		printf("\nReturn value: %d\n", reg[10] & 255);
 		end_simulate = true;
 		return;
 	}
