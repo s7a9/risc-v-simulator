@@ -1,17 +1,17 @@
 #include "RvALU.h"
 
-void ResrvStation::execute(const std::vector<ComnDataBus>& cdbs) {
+void ResrvStation::write_result_(const std::vector<ComnDataBus>& cdbs) {
 	if (state == RS_Waiting) {
 		bool f1 = Q1, f2 = Q2;
-		for (auto iter = cdbs.begin(); iter != cdbs.end(); ++iter)
-			if (iter->busy) {
-				if (f1 && Q1 == iter->Q) {
-					V1 = iter->val;
+		for (auto& cdb : cdbs)
+			if (cdb.busy) {
+				if (f1 && Q1 == cdb.Q) {
+					V1 = cdb.val;
 					Q1 = 0;
 					f1 = false;
 				}
-				if (f2 && Q2 == iter->Q) {
-					V2 = iter->val;
+				if (f2 && Q2 == cdb.Q) {
+					V2 = cdb.val;
 					Q2 = 0;
 					f2 = false;
 				}
@@ -30,6 +30,7 @@ void ResrvStation::tick() {
 #include <cstdio>
 
 void ALU::execute(ComnDataBus* cdb, ResrvStation& rs) {
+	if (!cdb) return;
 	if (rs.state == RS_Ready) {
 		uint32 uv1 = rs.V1, uv2 = rs.V2;
 		cdb->busy = true;
@@ -47,12 +48,13 @@ void ALU::execute(ComnDataBus* cdb, ResrvStation& rs) {
 			return;
 		}
 		// DEBUG!! //
+		/*
 		if (rs.cmd == 0x00f54533) {
 			printf("%u", rs.V1.cur_data);
 		}
 		if (rs.cmd == 0x00d7c7b3) {
 			printf("%c", rs.V1.cur_data & 255);
-		}
+		}*/
 		// ------- //
 		switch (rs.Op) {
 		case 0:

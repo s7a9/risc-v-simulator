@@ -87,9 +87,9 @@ void TomasuloCPUCore::issue_() {
 	uint32 cmd;
 	mu_.pmem->read(PC, cmd);
 	if (cmd == 0x0ff00513) {
-		printf("\nReturn value: %d\n", reg[10] & 255);
+		printf("%d", reg[10] & 255);
+		//printf("\nReturn value: %d\n", reg[10] & 255);
 		end_simulate = true;
-		return;
 	}
 	int8 opcode = cmd & 127;
 	int8 rd = parse_rd(cmd);
@@ -105,9 +105,18 @@ void TomasuloCPUCore::issue_() {
 		rob.val = parse_imm(cmd, 'U');
 		break;
 	case Instr_AUIPC:
-		rob.busy = false;
+		if (!(rs = try_get_alu_())) {
+			PC = PC;
+			rob_.withdraw();
+			break;
+		}
+		rob.busy = true;
 		reg_file[rd] = rob.Q;
-		rob.val = parse_imm(cmd, 'U') + PC;
+		rs->cmd = cmd; rs->Dst = rob.Q;
+		rs->Op = rs->Q1 = rs->Q2 = 0;
+		rs->state = RS_Ready;
+		rs->V1 = PC;
+		rs->V2 = parse_imm(cmd, 'U');
 		break;
 	case Instr_JAL:
 		rob.busy = false;
@@ -223,7 +232,7 @@ void TomasuloCPUCore::execute_() {
 void TomasuloCPUCore::write_result_() {
 	for (auto& iter : alus_) {
 		ResrvStation& rs = iter;
-		rs.execute(cdbs_);
+		rs.write_result_(cdbs_);
 		// Allow reservestation to read data from ROB
 		if (rs.state == RS_Waiting) {
 			if (rs.Q1 && !rob_[rs.Q1].busy) {
@@ -238,7 +247,7 @@ void TomasuloCPUCore::write_result_() {
 				rs.state = RS_Ready;
 		}
 	}
-	rob_.execute(cdbs_);
+	rob_.write_result_(cdbs_);
 }
 
 void TomasuloCPUCore::commit_() {
@@ -247,7 +256,7 @@ void TomasuloCPUCore::commit_() {
 	int32 val = 0;
 	// If any load instruction is ready with memory address
 	// Push the command into MU
-	// Should not push load instr. after store (RAW hazard)
+	// Should not push load instruction after store (RAW hazard)
 	auto iter = rob_.begin();
 	do {
 		int8 opcode = iter->cmd & 127;
@@ -272,7 +281,7 @@ void TomasuloCPUCore::commit_() {
 			while (!mu_.load_queue.empty())
 				mu_.load_queue.pop();
 			for (auto& iter : alus_) iter.state = RS_Idle;
-			memset(reg_file, 0, sizeof(reg_file));
+			for (int i = 0; i < 32; ++i) reg_file[i] = 0;
 		}
 		else rob_.pop();
 		break;

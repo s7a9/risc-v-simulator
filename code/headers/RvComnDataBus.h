@@ -1,4 +1,6 @@
 #pragma once
+#ifndef RVCOMNDATABUS_H
+#define RVCOMNDATABUS_H
 
 #include "Types.h"
 
@@ -9,3 +11,5 @@ struct ComnDataBus {
 
 	int32 val;
 };
+
+#endif //!RVCOMNDATABUS_H

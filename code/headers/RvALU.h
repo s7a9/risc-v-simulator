@@ -1,4 +1,6 @@
 #pragma once
+#ifndef RVALU_H
+#define RVALU_H
 
 #include "RvComnDataBus.h"
 #include "RvRegister.hpp"
@@ -15,7 +17,7 @@ struct ResrvStation {
 
 	Register<uint32> cmd;
 
-	void execute(const std::vector<ComnDataBus>& cdbs);
+	void write_result_(const std::vector<ComnDataBus>& cdbs);
 
 	void tick();
 };
@@ -23,3 +25,5 @@ struct ResrvStation {
 struct ALU {
 	static void execute(ComnDataBus* cdb, ResrvStation& rs);
 };
+
+#endif //!RVALU_H

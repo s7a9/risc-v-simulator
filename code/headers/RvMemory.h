@@ -1,3 +1,4 @@
+#pragma once
 #ifndef RV_MEMORY_H
 #define RV_MEMORY_H
 

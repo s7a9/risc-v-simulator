@@ -20,7 +20,7 @@ ReorderBuffer::ReorderBuffer(size_t capacity):
 
 ReorderBuffer::~ReorderBuffer() {}
 
-void ReorderBuffer::execute(const std::vector<ComnDataBus>& cdbs) {
+void ReorderBuffer::write_result_(const std::vector<ComnDataBus>& cdbs) {
 	if (size_ == 0) return;
 	auto iter = begin();
 	do {

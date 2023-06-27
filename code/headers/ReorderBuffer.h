@@ -1,4 +1,6 @@
 #pragma once
+#ifndef REORDERBUFFER_H
+#define REORDERBUFFER_H
 
 #include "Types.h"
 #include "RvComnDataBus.h"
@@ -65,7 +67,7 @@ public:
 
 	bool full() const { return size_ == capacity; }
 
-	void execute(const std::vector<ComnDataBus>& cdbs);
+	void write_result_(const std::vector<ComnDataBus>& cdbs);
 
 	void tick();
 
@@ -84,3 +86,4 @@ public:
 	Entry& operator[] (int index) { return robs_[index - 1]; }
 };
 
+#endif //!REORDERBUFFER_H

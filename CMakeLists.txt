@@ -8,7 +8,8 @@ include_directories(./code/headers)
 
 aux_source_directory(./code/src/ SRC_LIST)
 
-set(EXECUTABLE_OUTPUT_PATH ${PROJECT_SOURCE_DIR}/build/)
+set(EXECUTABLE_OUTPUT_PATH ${PROJECT_SOURCE_DIR}/)
 
-add_executable(oj_simulator
-    ${SRC_LIST})
+add_executable(code ${SRC_LIST})
+
+set(CMAKE_CXX_FLAGS "-O3 -Wall")
