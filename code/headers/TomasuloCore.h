@@ -68,6 +68,8 @@ private:
 public:
 	bool end_simulate = false;
 
+	size_t cpu_time() const { return cpu_time_; }
+
 	TomasuloCPUCore(RvMemory* mem, Predictor* predictor,
 		size_t cdbn, size_t alun, size_t robn);
 

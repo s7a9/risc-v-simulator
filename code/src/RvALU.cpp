@@ -56,13 +56,11 @@ void ALU::execute(ComnDataBus* cdb, ResrvStation& rs) {
 		// ------- //
 		switch (rs.Op) {
 		case 0:
-			if ((rs.cmd & 127) == Instr_ALUI) {
-				cdb->val = rs.V1 + rs.V2;
-			}
-			else {
+			if ((rs.cmd & 127) == Instr_ALU) {
 				cdb->val = (rs.cmd & 0x40000000) ?
 					rs.V1 - rs.V2 : rs.V1 + rs.V2;
 			}
+			else cdb->val = rs.V1 + rs.V2;
 			break;
 		case 1: cdb->val = rs.V1 << (rs.V2 & 31); break;
 		case 2: cdb->val = (rs.V1 < rs.V2) ? 1 : 0; break;

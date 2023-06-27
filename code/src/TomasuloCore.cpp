@@ -49,10 +49,10 @@ TomasuloCPUCore::~TomasuloCPUCore() {}
 void TomasuloCPUCore::tick() {
 	// Only requirement for order:
 	// execute_ must be before write_result_
-	commit_();
+	issue_();
 	execute_();
 	write_result_();
-	issue_();
+	commit_();
 	for (auto& iter : alus_) iter.tick();
 	reg[0] = 0; reg_file[0] = 0;
 	for (int i = 0; i < 32; ++i) {
@@ -74,7 +74,7 @@ TomasuloCPUCore::TomasuloCPUCore(RvMemory* pmem, Predictor* predictor,
 	alus_.resize(alun);
 }
 
-#include <iostream>
+#include <cstdio>
 
 void TomasuloCPUCore::issue_() {
 	// Reoerder Buffer is Full, cannot issue instruction
@@ -88,7 +88,7 @@ void TomasuloCPUCore::issue_() {
 	uint32 cmd;
 	mu_.pmem->read(PC, cmd);
 	if (cmd == 0x0ff00513) {
-		std::cout << "\nJudgeResult: " << (reg[10] & 255) << std::endl;
+		printf("\nJudgeResult: %d\n", reg[10] & 255);
 		end_simulate = true;
 		return;
 	}
@@ -256,7 +256,7 @@ void TomasuloCPUCore::commit_() {
 		if (opcode == Instr_L && iter->val == 1) {
 			iter->val = 0;
 			mu_.load_queue.push(MemUnit::load_instr{
-				iter->Q, iter->addr, iter->cmd, cpu_time_
+				iter->Q, iter->addr, iter->cmd, cpu_time()
 			});
 			break;
 		}
