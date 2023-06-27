@@ -4,9 +4,9 @@ project(risc_v_simulator)
 
 set(CMAKE_CXX_STANDARD 17)
 
-include_directories(./code/headers)
+include_directories(./source/headers)
 
-aux_source_directory(./code/src/ SRC_LIST)
+aux_source_directory(./source/src/ SRC_LIST)
 
 set(EXECUTABLE_OUTPUT_PATH ${PROJECT_SOURCE_DIR}/)
 
