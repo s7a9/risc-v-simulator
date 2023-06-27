@@ -51,10 +51,13 @@ void ALU::execute(ComnDataBus* cdb, ResrvStation& rs) {
 		/*
 		if (rs.cmd == 0x00f54533) {
 			printf("%u", rs.V1.cur_data);
+			if (rs.V1.cur_data == 2) {
+				int i = 0;
+			}
 		}
 		if (rs.cmd == 0x00d7c7b3) {
 			printf("%c", rs.V1.cur_data & 255);
-		}*/
+		}//*/
 		// ------- //
 		switch (rs.Op) {
 		case 0:

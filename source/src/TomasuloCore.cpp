@@ -52,6 +52,14 @@ void TomasuloCPUCore::tick() {
 	execute_();
 	write_result_();
 	commit_();
+	if (mispredicted_) {
+		mispredicted_ = false;
+		rob_.clear();
+		while (!mu_.load_queue.empty())
+			mu_.load_queue.pop();
+		for (auto& iter : alus_) iter.state = RS_Idle;
+		for (int i = 0; i < 32; ++i) reg_file[i] = 0;
+	}
 	for (auto& iter : alus_) iter.tick();
 	reg[0] = 0; reg_file[0] = 0;
 	for (int i = 0; i < 32; ++i) {
@@ -69,6 +77,7 @@ TomasuloCPUCore::TomasuloCPUCore(RvMemory* pmem, Predictor* predictor,
 	mu_.pmem = pmem;
 	predictor_ = predictor;
 	cpu_time_ = 0;
+	mispredicted_ = false;
 	cdbs_.resize(cdbn);
 	alus_.resize(alun);
 }
@@ -78,9 +87,6 @@ TomasuloCPUCore::TomasuloCPUCore(RvMemory* pmem, Predictor* predictor,
 void TomasuloCPUCore::issue_() {
 	// Reoerder Buffer is Full, cannot issue instruction
 	if (rob_.full()) return;
-	// A branch instruction mispredicted when committed
-	// all current instructions will be cleared
-	if (PC != PC.nxt_data) return;
 	ReorderBuffer::Entry& rob = rob_.push();
 	ResrvStation* rs = nullptr;
 	int32 tmp_val = 0;
@@ -88,7 +94,7 @@ void TomasuloCPUCore::issue_() {
 	mu_.pmem->read(PC, cmd);
 	if (cmd == 0x0ff00513) {
 		printf("%d", reg[10] & 255);
-		//printf("\nReturn value: %d\n", reg[10] & 255);
+		//printf("\nReturn value: %d\n", reg[10].cur_data);
 		end_simulate = true;
 	}
 	int8 opcode = cmd & 127;
@@ -259,6 +265,8 @@ void TomasuloCPUCore::commit_() {
 	// Should not push load instruction after store (RAW hazard)
 	auto iter = rob_.begin();
 	do {
+		// Load may have been committed, which would be loaded twice and crash
+		if (!iter->busy) continue;   
 		int8 opcode = iter->cmd & 127;
 		if (opcode == Instr_S) break;
 		if (opcode == Instr_L && iter->val == 1) {
@@ -277,11 +285,8 @@ void TomasuloCPUCore::commit_() {
 			if (rob.val)
 				PC = rob.addr + parse_imm(rob.cmd, 'B');
 			else PC = rob.addr + 4;
-			rob_.clear();
-			while (!mu_.load_queue.empty())
-				mu_.load_queue.pop();
-			for (auto& iter : alus_) iter.state = RS_Idle;
-			for (int i = 0; i < 32; ++i) reg_file[i] = 0;
+			mispredicted_ = true;
+			return;
 		}
 		else rob_.pop();
 		break;
@@ -318,7 +323,8 @@ bool TomasuloCPUCore::try_get_data_(int8 r, int32& val) {
 
 ResrvStation* TomasuloCPUCore::try_get_alu_() {
 	for (auto& iter : alus_) {
-		if (iter.state == RS_Idle)
+		if (iter.state == RS_Idle &&
+			iter.state.nxt_data == RS_Idle)
 			return &iter;
 	}
 	return nullptr;
@@ -326,7 +332,7 @@ ResrvStation* TomasuloCPUCore::try_get_alu_() {
 
 bool TomasuloCPUCore::load_rs_data_(ResrvStation& rs, int8 rs1, int8 rs2) {
 	int32 tmp_val;
-	bool f1 = true, f2 = true;
+	bool flag = true;
 	if (rs1) {
 		if (try_get_data_(rs1, tmp_val)) {
 			rs.V1 = tmp_val;
@@ -335,7 +341,7 @@ bool TomasuloCPUCore::load_rs_data_(ResrvStation& rs, int8 rs1, int8 rs2) {
 		else {
 			rs.Q1 = reg_file[rs1];
 			rs.V1 = 0;
-			f1 = false;
+			flag = false;
 		}
 	}
 	else {
@@ -350,14 +356,14 @@ bool TomasuloCPUCore::load_rs_data_(ResrvStation& rs, int8 rs1, int8 rs2) {
 		else {
 			rs.Q2 = reg_file[rs2];
 			rs.V2 = 0;
-			f2 = false;
+			flag = false;
 		}
 	}
 	else {
 		rs.Q2 = 0;
 		rs.V2 = 0;
 	}
-	return f1 && f2;
+	return flag;
 }
 
 void MemUnit::execute(ComnDataBus* cdb, size_t time) {

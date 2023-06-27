@@ -49,6 +49,8 @@ private:
 
 	Predictor* predictor_;
 
+	bool mispredicted_;
+
 	ComnDataBus* get_idle_cdb_();
 
 	void issue_();
