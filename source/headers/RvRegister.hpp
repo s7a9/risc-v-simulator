@@ -22,6 +22,10 @@ public:
 		return rhs;
 	}
 
+	bool changed() const {
+		return cur_data != nxt_data;
+	}
+
 	void tick() {
 		cur_data = nxt_data;
 	}

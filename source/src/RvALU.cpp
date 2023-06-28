@@ -47,8 +47,7 @@ void ALU::execute(ComnDataBus* cdb, ResrvStation& rs) {
 			}
 			return;
 		}
-		// DEBUG!! //
-		/*
+#ifdef RV_DEBUG
 		if (rs.cmd == 0x00f54533) {
 			printf("%u", rs.V1.cur_data);
 			if (rs.V1.cur_data == 2) {
@@ -57,8 +56,8 @@ void ALU::execute(ComnDataBus* cdb, ResrvStation& rs) {
 		}
 		if (rs.cmd == 0x00d7c7b3) {
 			printf("%c", rs.V1.cur_data & 255);
-		}//*/
-		// ------- //
+		}
+#endif //RV_DEBUG
 		switch (rs.Op) {
 		case 0:
 			if ((rs.cmd & 127) == Instr_ALU) {

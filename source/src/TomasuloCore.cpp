@@ -1,4 +1,3 @@
-#include <cstring>
 #include "TomasuloCore.h"
 
 #define parse_op(cmd)		(int8)(cmd & 127)
@@ -47,10 +46,22 @@ TomasuloCPUCore::~TomasuloCPUCore() {}
 
 void TomasuloCPUCore::tick() {
 	// Only requirement for order:
-	// execute_ must be before write_result_
+	// execute must be before write result
+
+	// Stage 1: Issue
+	//   Issue an instruction into RS and write it into ROB (if available)
 	issue_();
+	// Stage 2: Execute
+	//   ALUs and Mem Unit write output onto CDB
 	execute_();
+	// Stage 3: Write Result
+	//   Use data on CDB to update ROB and RS
 	write_result_();
+	// Stage 4: Commit
+	//   If the head of ROB is not busy, commit the instruction to registers or memory
+	//   Note #1: Solve branch misprediction by emptying up ROB.
+	//   Note #2: Immediately when load instruction receive address from cdb, it will send load command to MU. 
+	//            (if there are no store commands before it)
 	commit_();
 	if (mispredicted_) {
 		mispredicted_ = false;
@@ -82,20 +93,22 @@ TomasuloCPUCore::TomasuloCPUCore(RvMemory* pmem, Predictor* predictor,
 	alus_.resize(alun);
 }
 
-#include <cstdio>
+#define WITHDRAW_AND_RETURN {PC = PC;rob_.withdraw();return false;}
 
-void TomasuloCPUCore::issue_() {
+bool TomasuloCPUCore::issue_() {
 	// Reoerder Buffer is Full, cannot issue instruction
-	if (rob_.full()) return;
+	if (rob_.full()) return false;
+	// The priority of misprediction handling is higher than issue
+	if (mispredicted_) return false;
 	ReorderBuffer::Entry& rob = rob_.push();
 	ResrvStation* rs = nullptr;
 	int32 tmp_val = 0;
 	uint32 cmd;
 	mu_.pmem->read(PC, cmd);
 	if (cmd == 0x0ff00513) {
-		printf("%d", reg[10] & 255);
-		//printf("\nReturn value: %d\n", reg[10].cur_data);
+		simulate_result = reg[10];
 		end_simulate = true;
+		return false;
 	}
 	int8 opcode = cmd & 127;
 	int8 rd = parse_rd(cmd);
@@ -112,9 +125,7 @@ void TomasuloCPUCore::issue_() {
 		break;
 	case Instr_AUIPC:
 		if (!(rs = try_get_alu_())) {
-			PC = PC;
-			rob_.withdraw();
-			break;
+			WITHDRAW_AND_RETURN;
 		}
 		rob.busy = true;
 		reg_file[rd] = rob.Q;
@@ -141,15 +152,12 @@ void TomasuloCPUCore::issue_() {
 			// Failed to get data from registers or ROB
 			// issue MUST be STALLED and wait for rs1 to be calculated
 			// OR cpu would get wrong PC
-			PC = PC;
-			rob_.withdraw();
+			WITHDRAW_AND_RETURN;
 		}
 		break;
 	case Instr_Branch:
 		if (!(rs = try_get_alu_())) {
-			PC = PC;
-			rob_.withdraw();
-			break;
+			WITHDRAW_AND_RETURN;
 		}
 		rob.busy = true;
 		rs->cmd = cmd; rs->Dst = rob.Q;
@@ -160,15 +168,11 @@ void TomasuloCPUCore::issue_() {
 			PC = PC + parse_imm(cmd, 'B');
 			rob.dest_reg = 1;
 		}
-		else {
-			rob.dest_reg = 0;
-		}
+		else rob.dest_reg = 0;
 		break;
 	case Instr_L:
 		if (!(rs = try_get_alu_())) {
-			PC = PC;
-			rob_.withdraw();
-			break;
+			WITHDRAW_AND_RETURN;
 		}
 		rob.busy = true;
 		rob.val = 0;
@@ -182,10 +186,7 @@ void TomasuloCPUCore::issue_() {
 		break;
 	case Instr_S:
 		if (!(rs = try_get_alu_())) {
-			// Stall
-			PC = PC;
-			rob_.withdraw();
-			break;
+			WITHDRAW_AND_RETURN;
 		}
 		rob.dest_reg = 0;
 		rob.busy = true;
@@ -197,9 +198,7 @@ void TomasuloCPUCore::issue_() {
 		break;
 	case Instr_ALUI:
 		if (!(rs = try_get_alu_())) {
-			PC = PC;
-			rob_.withdraw();
-			break;
+			WITHDRAW_AND_RETURN;
 		}
 		rob.busy = true;
 		reg_file[rd] = rob.Q;
@@ -211,9 +210,7 @@ void TomasuloCPUCore::issue_() {
 		break;
 	case Instr_ALU:
 		if (!(rs = try_get_alu_())) {
-			PC = PC;
-			rob_.withdraw();
-			break;
+			WITHDRAW_AND_RETURN;
 		}
 		rob.busy = true;
 		reg_file[rd] = rob.Q;
@@ -223,6 +220,7 @@ void TomasuloCPUCore::issue_() {
 			RS_Ready : RS_Waiting;
 		break;
 	}
+	return true;
 }
 
 void TomasuloCPUCore::execute_() {

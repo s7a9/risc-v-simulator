@@ -53,7 +53,7 @@ private:
 
 	ComnDataBus* get_idle_cdb_();
 
-	void issue_();
+	bool issue_();
 
 	void execute_();
 
@@ -69,6 +69,8 @@ private:
 
 public:
 	bool end_simulate = false;
+
+	int32 simulate_result = 0;
 
 	size_t cpu_time() const { return cpu_time_; }
 

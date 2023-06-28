@@ -9,10 +9,11 @@
 void load_memory_from_file(RvMemory* mem, const char* filename) {
     std::fstream file(filename, std::ios::in);
     if (!file.is_open()) {
-        std::cout << "Can not open file \"" << filename << "\"." << std::endl;
+        std::cerr << "Cannot open file \"" << filename << "\"" << std::endl;
         exit(-1);
     }
     load_memory(mem, file);
+    file.close();
 }
 
 void load_memory(RvMemory* mem, std::istream& file) {
