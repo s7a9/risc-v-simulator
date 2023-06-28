@@ -8,16 +8,18 @@ TomasuloCPUCore* cpu;
 Predictor* predictor;
 RvMemory* memory;
 
-const char* help_document = "A RISC-V RV32I Tomasulo CPU Simulator by s7a9\nusage: [-M mem_block_size | -A alu_num | -C cdb_num | -R rob_num] [-stat] [input] [-o output]\n";
+const char* help_document = "A RISC-V RV32I Tomasulo CPU Simulator by s7a9\n\n"
+	"usage: [-M mem_block_size] [-A alu_num] [-C cdb_num] [-R rob_num]\n"
+	"       [-P always | alwaysNot | twobit size | local size | gshare size | tournament size]\n"
+	"       [-stat] [input] [-o output]\n\n"
+	"default configuration:\n"
+	"mem_block_size=10, alu_num=4, cdb_num=2, rob_num=16\n";
 
-size_t mem_argu		= 10, 
-	   alu_argu		= 4,
-	   cdb_argu		= 2,
-	   rob_argu		= 16;
+size_t mem_argu = 10, alu_argu = 4, cdb_argu = 2, rob_argu = 16;
 
+bool stat_on = false;
 const char* input_filename = nullptr;
 const char* output_filename = nullptr;
-bool stat_on = false;
 
 inline void print_result(std::ostream& out) {
 	out << (cpu->simulate_result & 255);
@@ -27,6 +29,40 @@ inline void print_result(std::ostream& out) {
 		out << predictor->stat[1][0] << '\t' << predictor->stat[1][1] << '\n';
 	}
 	out.flush();
+}
+
+Predictor* parse_predictor_config(int& argi, int argc, const char* argv[]) {
+	if (argi == argc) {
+		std::cerr << "Must indicate predictor type after -P\n";
+		return nullptr;
+	}
+	if (strcmp(argv[argi], "always") == 0)
+		return new AlwaysPredictor();
+	else if (strcmp(argv[argi], "alwaysNot") == 0)
+		return new AlwaysNotPredictor();
+	if (++argi == argc) {
+		std::cerr << "Must indicate predictor size for this type\n";
+		return nullptr;
+	}
+	int size;
+	if (!(size = atoi(argv[argi])) || size > 24) {
+		std::cerr << "Illegal size for predictor\n";
+		return nullptr;
+	}
+	if (strcmp(argv[argi - 1], "twobit") == 0) {
+		return new TwoBitSaturatePredictor(size);
+	}
+	if (strcmp(argv[argi - 1], "local") == 0) {
+		return new LocalPredictor(size);
+	}
+	if (strcmp(argv[argi - 1], "gshare") == 0) {
+		return new GSharePredictor(size);
+	}
+	if (strcmp(argv[argi - 1], "tournament") == 0) {
+		return new TournamentPredictor(size);
+	}
+	std::cerr << "Unknown predictor type!\n";
+	return nullptr;
 }
 
 int main(int argc, const char* argv[]) {
@@ -85,10 +121,20 @@ int main(int argc, const char* argv[]) {
 			std::cout << help_document;
 			return 0;
 		}
-		else input_filename = argv[argi];
+		else if (strcmp(argv[argi], "-P") == 0) {
+			if (!(predictor = parse_predictor_config(++argi, argc, argv)))
+				return -1;
+		}
+		else {
+			if (input_filename) {
+				std::cerr << "Unexpected arguemnt: " << argv[argi];
+				return -1;
+			}
+			input_filename = argv[argi];
+		}
 	}
 	memory = new RvMemory(mem_argu);
-	predictor = new TwoBitSaturatePredictor(1024);
+	if (!predictor) predictor = new LocalPredictor(16);
 	cpu = new TomasuloCPUCore(memory, predictor, cdb_argu, alu_argu, rob_argu);
 	if (input_filename) load_memory_from_file(memory, input_filename);
 	else load_memory(memory, std::cin);
