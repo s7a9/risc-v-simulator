@@ -62,6 +62,8 @@ void LocalPredictor::revise(uint32 addr, bool pred, bool real) {
 GSharePredictor::GSharePredictor(size_t size) : size_(1ull << size) {
 	record_ = new int8[size_];
 	history_ = new int[size_];
+	memset(record_, 0, size_);
+	memset(history_, 0, sizeof(int) * size_);
 }
 
 GSharePredictor::~GSharePredictor() {
